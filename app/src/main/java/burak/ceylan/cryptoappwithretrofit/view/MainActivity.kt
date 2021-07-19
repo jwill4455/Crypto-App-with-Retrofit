@@ -9,11 +9,15 @@ import burak.ceylan.cryptoappwithretrofit.R
 import burak.ceylan.cryptoappwithretrofit.adapter.RecyclerViewAdapter
 import burak.ceylan.cryptoappwithretrofit.model.CryptoModel
 import burak.ceylan.cryptoappwithretrofit.service.CryptoAPI
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.schedulers.Schedulers
 import kotlinx.android.synthetic.main.activity_main.*
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import retrofit2.Retrofit
+import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory
 import retrofit2.converter.gson.GsonConverterFactory
 
 class MainActivity : AppCompatActivity(), RecyclerViewAdapter.Listener {
@@ -22,6 +26,9 @@ class MainActivity : AppCompatActivity(), RecyclerViewAdapter.Listener {
     private var cryptoModels : ArrayList<CryptoModel>? = null
     private var recyclerViewAdapter : RecyclerViewAdapter? = null
 
+    //Disposable
+    private var compositeDisposable: CompositeDisposable? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -29,6 +36,8 @@ class MainActivity : AppCompatActivity(), RecyclerViewAdapter.Listener {
         //BASE_URL : https://api.nomics.com/v1/
         // prices?key=795b4ee897629cd0a7b68fe93e22ca631afc7175
         //MY API KEY : 795b4ee897629cd0a7b68fe93e22ca631afc7175
+
+        compositeDisposable = CompositeDisposable()
 
         //RecyclerView
 
@@ -44,10 +53,19 @@ class MainActivity : AppCompatActivity(), RecyclerViewAdapter.Listener {
         val retrofit = Retrofit.Builder()
                 .baseUrl(BASE_URL)
                 .addConverterFactory(GsonConverterFactory.create())
-                .build()
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                .build().create(CryptoAPI::class.java)
 
-        val service = retrofit.create(CryptoAPI::class.java)
-        val call = service.getData()
+            compositeDisposable?.add(retrofit.getData()
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(this::handleResponse))
+
+
+            /*
+         val service = retrofit.create(CryptoAPI::class.java)
+         val call = service.getData()
+
 
         call.enqueue(object: Callback<List<CryptoModel>> {
             override fun onResponse(call: Call<List<CryptoModel>>, response: Response<List<CryptoModel>>) {
@@ -70,10 +88,31 @@ class MainActivity : AppCompatActivity(), RecyclerViewAdapter.Listener {
             }
 
         })
+
+
+             */
         }
+
+    private fun handleResponse(cryptoList : List<CryptoModel>){
+        cryptoModels = ArrayList(cryptoList)
+
+        cryptoModels?.let {
+            recyclerViewAdapter = RecyclerViewAdapter(it, this@MainActivity)
+            recyclerView.adapter = recyclerViewAdapter
+        }
+
+    }
 
     override fun onItemClick(cryptoModel: CryptoModel) {
         Toast.makeText(this, "Clicked : ${cryptoModel.currency}", Toast.LENGTH_LONG).show()
+    }
+
+
+    //That's why we are using RxJava, when we destroy the activity, CompositeDisposable will be cleared
+    override fun onDestroy() {
+        super.onDestroy()
+
+        compositeDisposable?.clear()
     }
 
 
